@@ -1,12 +1,50 @@
 import numpy as np
-import scipy.misc
-
-np.set_printoptions(threshold=np.inf)
 import matplotlib.pyplot as plt
-
 from scipy import sparse
 from scipy.sparse import linalg
 from PIL import Image
+np.set_printoptions(threshold=np.inf)
+
+
+def kontrast(src):
+    """
+
+    :param src:
+    :param alpha:
+    :param th:
+    :return:
+    """
+    th = 50
+    u0 = lese_inn(src)
+    hoyde, bredde, kanaler = u0.shape
+    ui = np.ones((hoyde, bredde))
+    for i in range(hoyde):
+        for j in range(bredde):
+            for k in range(3):
+                if u0[i, j, k] <= th:
+                    ui[i, j] = 255
+                else:
+                    ui[i, j] = 0
+    a, b, indx_til_koord, koord_til_indx, retning = initialisere(ui)
+    return losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1='K')
+
+def klone(src, mask, target):
+    """
+
+    :param src:
+    :param mask:
+    :param target:
+    :return:
+    """
+    u0, ui, u1 = lese_inn(src, mask, target, opr_type=2)
+    if not like(u0, ui) and like(u0, u1):
+        raise ValueError('Masken, forgrunnsbildet og bakgrunnsbildet'
+                         'må ha samme hoyde og bredde')
+
+    ui = np.where(ui > 122, 255, 0)
+    a, b, indx_til_koord, koord_til_indx, retning = initialisere(ui)
+    return losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=u1)
+
 
 def inpaint(src, mask):
     """
@@ -19,16 +57,23 @@ def inpaint(src, mask):
     if not like(u0, ui):
         raise ValueError('Masken og bildet maa ha samme hoyde og bredde')
 
-    hoyde = u0.shape[0]
-    bredde = u0.shape[1]
     ui = np.where(ui > 170, 255, 0)
- #   try:
- #       ui = ui[:, :, 0]
- #   except IndexError:
- #       return
+    a, b, indx_til_koord, koord_til_indx, retning = initialisere(ui)
+    return losning(u0, a, b, indx_til_koord, koord_til_indx, retning)
+
+
+def initialisere(ui):
+    """
+
+    :param ui:
+    :return:
+    """
+
+    hoyde = ui.shape[0]
+    bredde = ui.shape[1]
     retning = []
     indx_til_koord = []
-    koord_til_indx = -1 * np.ones([hoyde, bredde])
+    koord_til_indx = -1 * np.ones((hoyde, bredde))
 
     idx = 0
     for i in range(hoyde):
@@ -45,9 +90,9 @@ def inpaint(src, mask):
                 koord_til_indx[i][j] = idx
                 idx += 1
 
-    b = np.zeros([idx, 3])
+    b = np.zeros((idx, 3))
     a = sparse.lil_matrix((idx, idx), dtype=int)
-    return losning(u0, a, b, indx_til_koord, koord_til_indx, retning)
+    return a, b, indx_til_koord, koord_til_indx, retning
 
 
 def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
@@ -62,8 +107,13 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     :param u1: (np.array, optional) "forgrunnsbildet"
     :return: a og b
     """
+
+    kont = False
     if u1 is None:
         u_x = u0
+    elif u1 == 'K':
+        kont = True
+
     else:
         u_x = u1
 
@@ -84,10 +134,14 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
             np.array(retning[j], dtype=int) + 1, 2)
         x, y = indx_til_koord[j]
         for m in range(3):
-            b[j, m] += flag[0] * u_x[x - 1, y, m] + flag[1] * u_x[x + 1, y, m] + flag[2] * \
-                u_x[x, y - 1, m] + flag[3] * u_x[x, y + 1, m]
-            #b[j, m] = 4 * u0[x, y, m] - u0[x - 1, y, m] - u0[x + 1, y, m] - u0[x, y - 1, m] - \
-                #u0[x, y + 1, m]
+            if u1 is not None:
+                b[j, m] = 4 * u0[x, y, m] - u0[x - 1, y, m] - u0[x + 1, y, m] - u0[x, y - 1, m] - \
+                    u0[x, y + 1, m]
+            if kont is False:
+                b[j, m] += flag[0] * u_x[x - 1, y, m] + flag[1] * u_x[x + 1, y, m] + flag[2] * \
+                    u_x[x, y - 1, m] + flag[3] * u_x[x, y + 1, m]
+            if kont is True:
+                b[j, m] *= 2.5
     return a, b
 
 
@@ -124,23 +178,23 @@ def losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     return u
 
 
-def konverter(arr1):
+def konverter(img):
     """
     Konverterer float64 array til int8 array
-    :param arr1: (numpy array) array som skal konverteres fra float64 til int8
+    :param img: (numpy array) array som skal konverteres fra float64 til int8
     :return: (numpy array) konvertert array
     """
-    return 255 * arr1.astype(np.uint8)
+    return 255 * img.astype(np.uint8)
 
 
-def like(arr1, arr2):
+def like(img1, img2):
     """
     Skekker om de to arrayene har lik størrelse
-    :param arr1: (numpy array) array nummer en som skal sammenlignes
-    :param arr2: (numpy array) array nummer to som skal sammenlignes
+    :param img1: (numpy array) array nummer en som skal sammenlignes
+    :param img2: (numpy array) array nummer to som skal sammenlignes
     :return: (bool) true om de er like, false om de ikke er like
     """
-    return arr1.shape[0] == arr2.shape[0] and arr1.shape[1] == arr2.shape[1]
+    return img1.shape[0] == img2.shape[0] and img1.shape[1] == img2.shape[1]
 
 
 
