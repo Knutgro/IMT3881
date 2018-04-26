@@ -9,7 +9,7 @@ np.set_printoptions(threshold=np.inf)
 
 def glatting(u0, alpha=0.05):
     """
-
+    Glatting eller "blurring" av bilde u0.
     :param u0: (str) path til bildet som skal glattes
     :param alpha: (int, optional) avgjør hvor fort glattingen utføres
     :return: intet
@@ -18,7 +18,7 @@ def glatting(u0, alpha=0.05):
     plt.ion()
     data = plt.imshow(u0)
     plt.draw()
-    t_end = time.time() + 20
+    t_end = time.time() + 7
 
     while time.time() < t_end:
         laplace = (u0[0:-2, 1:-1] +
@@ -36,21 +36,21 @@ def glatting(u0, alpha=0.05):
         plt.pause(1e-4)
 def kontrast(src):
     """
+    Forsterker kontrastene i bilde src
+    :param src: (str) path til bilde som skal kontrast forsterkes
 
-    :param src: (str) Bildet som skal kontrast forsterkes
-
-    :return: (numpy array) kontrast forsterket bildet
+    :return: (Image object) kontrast forsterket bilde
     """
     th = 50
     u0 = lese_inn(src)
     hoyde, bredde, kanaler = u0.shape
     ui = np.zeros((hoyde, bredde, 3), dtype=np.uint8)
 
-    for i in range(hoyde):                                                         #for loop fordi np.where() ikke
-        for j in range(bredde):                                                    #ikke fungerer som jeg vil
-            for k in range(3):
-                if u0[i, j, k] <= th:
-                    ui[i, j, 0] = 255
+    for i in range(hoyde):                              # for-loop fordi np.where() ikke
+        for j in range(bredde):                         # fungerer som jeg vil
+            for k in range(3):                          # Lager mask basert på theta
+                if u0[i, j, k] <= th:                   # Om mørkere enn 50, innenfor omega_i
+                    ui[i, j, 0] = 255                   # om lysere utenfor omega_i
                     ui[i, j, 1] = 255
                     ui[i, k, 2] = 255
 
@@ -61,11 +61,13 @@ def kontrast(src):
 
 def klone(src, mask, target):
     """
-
-    :param src: (str) path til bakgrunnsbildet
+    Utfører sømløs kloning. Tar informasjon fra src bildet basert på masken og
+    setter det inn i target. Informasjonen fra src blir endret slik at det passer
+    inn i target bildet
+    :param src: (str) path til forgrunnsbildet
     :param mask: (str) path til masken
-    :param target: (str) path til forgrunnsbildet
-    :return: (numpy array) ferdig klonet bildet
+    :param target: (str) path til bakgrunnsbildet
+    :return: (Image object) ferdig klonet bilde
     """
     u0, ui, u1 = lese_inn(src, mask, target, opr_type=2)
     if not like(u0, ui) and like(u0, u1):
@@ -79,10 +81,11 @@ def klone(src, mask, target):
 
 def inpaint(src, mask):
     """
-
-    :param src: (str) path til bildet
+    Fyller inn informasjon innenfor omega_i basert på informasjon som grenser til
+    omega_i i omega.
+    :param src: (str) path til bilde
     :param mask: (str) path til mask
-    :return: (3d array) inpainta bildet
+    :return: (Image object) inpainta bilde
     """
     u0, ui = lese_inn(src, mask, opr_type=1)
     if not like(u0, ui):
@@ -95,17 +98,18 @@ def inpaint(src, mask):
 
 def initialisere(ui):
     """
-
-    :param ui: (str)
-    :return:
+    Initialiserer variabler og indekserer omega_i
+    Finner hvilke naboer i omega_i som også er i omega_i
+    :param ui: (np.array) masken, 255 om innenfor omega_i 0 om utenfor
+    :return: a (sparse array), b (array), indx_til_koord (list), koord_til_indx( array, retning (list)
     """
 
     hoyde = ui.shape[0]
     bredde = ui.shape[1]
-    retning = []
-    indx_til_koord = []
+    retning = []                    # Hvilken retning er omega og hvilken er omega_i
+    indx_til_koord = []             # Indeks til koordinatene som er innenfor omega_i
     koord_til_indx = -1 * np.ones((hoyde, bredde))
-
+                                    # indeksene der hvor omega_i befinner seg
     idx = 0
     for i in range(hoyde - 1):
         for j in range(bredde - 1):
@@ -128,15 +132,17 @@ def initialisere(ui):
 
 def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     """
-
+    Setter opp poisson's ligning
     :param u0: (np.array) "bakgrunnsbildet"
-    :param a:  (sparse array) gradientene
-    :param b:  (np.array) laplace
-    :param indx_til_koord: (list)
-    :param koord_til_indx: (np.array)
-    :param retning: (list)
+    :param a:  (sparse array) laplace
+    :param b:  (np.array) gradientene
+    :param indx_til_koord: (list) inneholder indeksene til koordinatene som er
+            innenfor omega_i
+    :param koord_til_indx: (np.array) inneholder koordinatene til indeksene som er
+            innenfor omega_i
+    :param retning: ( bool list) true innenfor omega_i false utenfor
     :param u1: (np.array, optional) "forgrunnsbildet"
-    :return: a og b
+    :return: a (sparse array) og b (array)
     """
 
     kont = False
@@ -147,7 +153,7 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     else:
         u_x = u1
 
-    for i in range(b.shape[0]):
+    for i in range(b.shape[0]):  # Initierer laplace matrise innenfor Omega_i
         a[i, i] = 4
         x, y = indx_til_koord[i]
         if retning[i][0]:
@@ -161,7 +167,7 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
 
     for j in range(b.shape[0]):
         flag = np.mod(
-            np.array(retning[j], dtype=int) + 1, 2)
+            np.array(retning[j], dtype=int) + 1, 2)  # 0 -> innenfor u_i 1 -> utenfor u_i
         x, y = indx_til_koord[j]
         for m in range(3):
             if u1 is not None:
@@ -178,15 +184,17 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
 
 def losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     """
-
+    Løser poissons ligning
     :param u0: (np.array) "bakgrunnsbildet"
-    :param a:  (sparse array) gradientene
-    :param b:  (np.array) laplace
-    :param indx_til_koord: (list)
-    :param koord_til_indx: (np.array)
-    :param retning: (list)
+    :param a:  (sparse array) laplace
+    :param b:  (np.array) gradientene innenfor omega_i
+    :param indx_til_koord: (list) inneholder indeksene til koordinatene som er
+            innenfor omega_i
+    :param koord_til_indx: (np.array) inneholder koordinatene til indeksene som er
+            innenfor omega_i
+    :param retning: ( bool list) true innenfor omega_i false utenfor
     :param u1: (np.array, optional) "forgrunnsbildet"
-    :return: u (np.array) inpainta bildet
+    :return: u (Image object) ferdig behandlet bilde
     """
     if u1 is None:
         u_x = u0
@@ -195,21 +203,20 @@ def losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
         a, b = eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=u1)
         u_x = u1
 
-    x_r = linalg.cg(a, b[:, 0])[0]
+    x_r = linalg.cg(a, b[:, 0])[0]           # Løser ligning for hver kanal
     x_g = linalg.cg(a, b[:, 1])[0]
     x_b = linalg.cg(a, b[:, 2])[0]
 
-    if u1 is 'K':
+    if u1 is 'K':                            # Om vi anvender kontrast forsterkning
         u = u0
     else:
         u = u_x
 
     for i in range(b.shape[0]):
         x, y = indx_til_koord[i]
-        u[x, y, 0] = np.clip(x_r[i], 0, 255)
-        u[x, y, 1] = np.clip(x_g[i], 0, 255)
-        u[x, y, 2] = np.clip(x_b[i], 0, 255)
-
+        u[x, y, 0] = np.clip(x_r[i], 0, 255)  # min verdi 0
+        u[x, y, 1] = np.clip(x_g[i], 0, 255)  # max verdi 255
+        u[x, y, 2] = np.clip(x_b[i], 0, 255)  # legges inn i nytt bildet (u_i_i fylles inn)
     u = Image.fromarray(u)
 
     return u
@@ -225,9 +232,9 @@ def konverter(img):
 
 def lagrebildet(img, filnavn):
     """
-
-    :param img1:
-    :param filnavn:
+    Lagrer bildet til disk
+    :param img: (array) array som skal lagres som bilde
+    :param filnavn: (str) filnavn til bilde
     :return: intet
     """
     img = Image.fromarray(img)
@@ -236,7 +243,7 @@ def lagrebildet(img, filnavn):
 
 def like(img1, img2):
     """
-    Skekker om de to arrayene har lik størrelse
+    Sjekker om de to arrayene har lik størrelse
     :param img1: (numpy array) array nummer en som skal sammenlignes
     :param img2: (numpy array) array nummer to som skal sammenlignes
     :return: (bool) true om de er like, false om de ikke er like
@@ -281,7 +288,7 @@ def lagmaske(src):
     Lager en binær maske av bildet. Område som skal maskes må
     markert i hvitt, resten kan være som det er.
 
-    :param src: (str) path til bildet
+    :param src: (str) path til bilde
     :return: (numpy array) ferdig maske
     """
     u = lese_inn(src)
@@ -308,8 +315,10 @@ if __name__ == "__main__":
     #s.save('medpenguin.jpg')
     #v = inpaint('ferdig.jpg', 'maskds5.jpg')
     #v.save('inpaint.jpg')
-    glatting('GreyCat.png')
+    #glatting('GreyCat.png')
     #s = kontrast('ColorCat.png')
    # s.save('CatContrast.jpg')
     #plt.imshow(s)
    # plt.show()
+   print(np.mod(2, 2))
+   print(np.mod(1, 2))
