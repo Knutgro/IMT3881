@@ -3,38 +3,69 @@ import matplotlib.pyplot as plt
 from scipy import sparse
 from scipy.sparse import linalg
 from PIL import Image
+import time
 np.set_printoptions(threshold=np.inf)
 
 
+def glatting(u0, alpha=0.05):
+    """
+
+    :param u0: (str) path til bildet som skal glattes
+    :param alpha: (int, optional) avgjør hvor fort glattingen utføres
+    :return: intet
+    """
+    u0 = plt.imread(u0)
+    plt.ion()
+    data = plt.imshow(u0)
+    plt.draw()
+    t_end = time.time() + 20
+
+    while time.time() < t_end:
+        laplace = (u0[0:-2, 1:-1] +
+                   u0[2:, 1:-1] +
+                   u0[1:-1, 0:-2] +
+                   u0[1:-1, 2:] -
+                   4 * u0[1:-1, 1:-1])
+        u0[1:-1, 1:-1] += alpha * laplace
+        u0[:, 0] = u0[:, 1]
+        u0[:, -1] = u0[:, -2]
+        u0[0, :] = u0[1, :]
+        u0[-1, :] = u0[-2, :]
+        data.set_array(u0)
+        plt.draw()
+        plt.pause(1e-4)
 def kontrast(src):
     """
 
-    :param src:
-    :param alpha:
-    :param th:
-    :return:
+    :param src: (str) Bildet som skal kontrast forsterkes
+
+    :return: (numpy array) kontrast forsterket bildet
     """
     th = 50
     u0 = lese_inn(src)
     hoyde, bredde, kanaler = u0.shape
-    ui = np.ones((hoyde, bredde))
-    for i in range(hoyde):
-        for j in range(bredde):
+    ui = np.zeros((hoyde, bredde, 3), dtype=np.uint8)
+
+    for i in range(hoyde):                                                         #for loop fordi np.where() ikke
+        for j in range(bredde):                                                    #ikke fungerer som jeg vil
             for k in range(3):
                 if u0[i, j, k] <= th:
-                    ui[i, j] = 255
-                else:
-                    ui[i, j] = 0
+                    ui[i, j, 0] = 255
+                    ui[i, j, 1] = 255
+                    ui[i, k, 2] = 255
+
+    lagrebildet(ui, 'kontrastmask')
     a, b, indx_til_koord, koord_til_indx, retning = initialisere(ui)
     return losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1='K')
+
 
 def klone(src, mask, target):
     """
 
-    :param src:
-    :param mask:
-    :param target:
-    :return:
+    :param src: (str) path til bakgrunnsbildet
+    :param mask: (str) path til masken
+    :param target: (str) path til forgrunnsbildet
+    :return: (numpy array) ferdig klonet bildet
     """
     u0, ui, u1 = lese_inn(src, mask, target, opr_type=2)
     if not like(u0, ui) and like(u0, u1):
@@ -65,7 +96,7 @@ def inpaint(src, mask):
 def initialisere(ui):
     """
 
-    :param ui:
+    :param ui: (str)
     :return:
     """
 
@@ -76,8 +107,8 @@ def initialisere(ui):
     koord_til_indx = -1 * np.ones((hoyde, bredde))
 
     idx = 0
-    for i in range(hoyde):
-        for j in range(bredde):
+    for i in range(hoyde - 1):
+        for j in range(bredde - 1):
             if ui[i, j, 0] == 255:
                 indx_til_koord.append([i, j])
                 retning.append([
@@ -111,9 +142,8 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     kont = False
     if u1 is None:
         u_x = u0
-    elif u1 == 'K':
+    elif u1 is 'K':
         kont = True
-
     else:
         u_x = u1
 
@@ -141,7 +171,8 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
                 b[j, m] += flag[0] * u_x[x - 1, y, m] + flag[1] * u_x[x + 1, y, m] + flag[2] * \
                     u_x[x, y - 1, m] + flag[3] * u_x[x, y + 1, m]
             if kont is True:
-                b[j, m] *= 2.5
+                b[j, m] -= 1.1 * (4 * u0[x, y, m] - u0[x - 1, y, m] - u0[x + 1, y, m] - u0[x, y - 1, m] -
+                                  u0[x, y + 1, m])
     return a, b
 
 
@@ -159,13 +190,19 @@ def losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     """
     if u1 is None:
         u_x = u0
+        a, b = eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning)
     else:
+        a, b = eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=u1)
         u_x = u1
-    a, b = eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None)
+
     x_r = linalg.cg(a, b[:, 0])[0]
     x_g = linalg.cg(a, b[:, 1])[0]
     x_b = linalg.cg(a, b[:, 2])[0]
-    u = u_x
+
+    if u1 is 'K':
+        u = u0
+    else:
+        u = u_x
 
     for i in range(b.shape[0]):
         x, y = indx_til_koord[i]
@@ -186,6 +223,16 @@ def konverter(img):
     """
     return 255 * img.astype(np.uint8)
 
+def lagrebildet(img, filnavn):
+    """
+
+    :param img1:
+    :param filnavn:
+    :return: intet
+    """
+    img = Image.fromarray(img)
+    img.save(filnavn + '.jpg')
+
 
 def like(img1, img2):
     """
@@ -195,7 +242,6 @@ def like(img1, img2):
     :return: (bool) true om de er like, false om de ikke er like
     """
     return img1.shape[0] == img2.shape[0] and img1.shape[1] == img2.shape[1]
-
 
 
 def lese_inn(src, mask=None, target=None, opr_type=0):
@@ -214,7 +260,7 @@ def lese_inn(src, mask=None, target=None, opr_type=0):
     """
     u0 = np.array(Image.open(src))
     if u0.dtype == 'float64':
-        u0 = konverter(u0)
+        print('')
     if opr_type > 0:
         ui = np.array(Image.open(mask))
         if ui.dtype == 'float64':
@@ -230,8 +276,40 @@ def lese_inn(src, mask=None, target=None, opr_type=0):
         return u0
 
 
+def lagmaske(src):
+    """
+    Lager en binær maske av bildet. Område som skal maskes må
+    markert i hvitt, resten kan være som det er.
+
+    :param src: (str) path til bildet
+    :return: (numpy array) ferdig maske
+    """
+    u = lese_inn(src)
+    hoyde = u.shape[0]
+    bredde = u.shape[1]
+    for i in range(hoyde):
+        for j in range(bredde):
+            for k in range(3):
+                if u[i, j, k] < 180:
+                    u[i, j] = 0
+                elif u[i, j, k] >= 180:
+                    u[i, j] = 255
+
+    return Image.fromarray(u)
+
+
 if __name__ == "__main__":
-    print('hello')
-    s = inpaint('gjov.jpg', 'gjovmask.jpg')
-    plt.imshow(s)
-    plt.show()
+   # print('hello')
+    #s = inpaint('gjov.jpg', 'gjovmask6.jpg')
+    #s = lagmaske('penguinmask.jpg')
+    #s = Image.fromarray(s, mode='RGB')
+    #s.save('inpaintgjov2.jpg')
+    #s = klone('penguin-baby.jpg', 'penguinmask2.jpg', 'ferdig2.jpg')
+    #s.save('medpenguin.jpg')
+    #v = inpaint('ferdig.jpg', 'maskds5.jpg')
+    #v.save('inpaint.jpg')
+    glatting('GreyCat.png')
+    #s = kontrast('ColorCat.png')
+   # s.save('CatContrast.jpg')
+    #plt.imshow(s)
+   # plt.show()
