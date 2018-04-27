@@ -34,6 +34,8 @@ def glatting(u0, alpha=0.05):
         data.set_array(u0)
         plt.draw()
         plt.pause(1e-4)
+
+
 def kontrast(src):
     """
     Forsterker kontrastene i bilde src
@@ -134,8 +136,8 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     """
     Setter opp poisson's ligning
     :param u0: (np.array) "bakgrunnsbildet"
-    :param a:  (sparse array) laplace
-    :param b:  (np.array) gradientene
+    :param a:  (sparse array) laplace innenfor omega_i og i grenseområder
+    :param b:  (np.array) nye verdiene
     :param indx_til_koord: (list) inneholder indeksene til koordinatene som er
             innenfor omega_i
     :param koord_til_indx: (np.array) inneholder koordinatene til indeksene som er
@@ -153,7 +155,7 @@ def eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     else:
         u_x = u1
 
-    for i in range(b.shape[0]):  # Initierer laplace matrise innenfor Omega_i
+    for i in range(b.shape[0]):  # Initierer laplace matrise innenfor Omega_i og i grense området
         a[i, i] = 4
         x, y = indx_til_koord[i]
         if retning[i][0]:
@@ -186,14 +188,14 @@ def losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     """
     Løser poissons ligning
     :param u0: (np.array) "bakgrunnsbildet"
-    :param a:  (sparse array) laplace
-    :param b:  (np.array) gradientene innenfor omega_i
+    :param a:  (sparse array) laplace innenfor omega_i og på grensen
+    :param b:  (np.array) verdiene innenfor omega_i
     :param indx_til_koord: (list) inneholder indeksene til koordinatene som er
             innenfor omega_i
     :param koord_til_indx: (np.array) inneholder koordinatene til indeksene som er
             innenfor omega_i
     :param retning: ( bool list) true innenfor omega_i false utenfor
-    :param u1: (np.array, optional) "forgrunnsbildet"
+    :param u1: (np.array eller str, optional) "forgrunnsbildet", 'K' om kontrastforskterkning
     :return: u (Image object) ferdig behandlet bilde
     """
     if u1 is None:
@@ -203,9 +205,9 @@ def losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
         a, b = eksplisitt(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=u1)
         u_x = u1
 
-    x_r = linalg.cg(a, b[:, 0])[0]           # Løser ligning for hver kanal
-    x_g = linalg.cg(a, b[:, 1])[0]
-    x_b = linalg.cg(a, b[:, 2])[0]
+    c_r = linalg.cg(a, b[:, 0])[0]           # Løser ligning for hver kanal
+    c_g = linalg.cg(a, b[:, 1])[0]
+    c_b = linalg.cg(a, b[:, 2])[0]
 
     if u1 is 'K':                            # Om vi anvender kontrast forsterkning
         u = u0
@@ -214,9 +216,9 @@ def losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
 
     for i in range(b.shape[0]):
         x, y = indx_til_koord[i]
-        u[x, y, 0] = np.clip(x_r[i], 0, 255)  # min verdi 0
-        u[x, y, 1] = np.clip(x_g[i], 0, 255)  # max verdi 255
-        u[x, y, 2] = np.clip(x_b[i], 0, 255)  # legges inn i nytt bildet (u_i_i fylles inn)
+        u[x, y, 0] = np.clip(c_r[i], 0, 255)  # min verdi 0
+        u[x, y, 1] = np.clip(c_g[i], 0, 255)  # max verdi 255
+        u[x, y, 2] = np.clip(c_b[i], 0, 255)  # legges inn i nytt bildet (u_i_i fylles inn)
     u = Image.fromarray(u)
 
     return u
@@ -306,19 +308,14 @@ def lagmaske(src):
 
 
 if __name__ == "__main__":
-   # print('hello')
-    #s = inpaint('gjov.jpg', 'gjovmask6.jpg')
-    #s = lagmaske('penguinmask.jpg')
-    #s = Image.fromarray(s, mode='RGB')
-    #s.save('inpaintgjov2.jpg')
-    #s = klone('penguin-baby.jpg', 'penguinmask2.jpg', 'ferdig2.jpg')
-    #s.save('medpenguin.jpg')
-    #v = inpaint('ferdig.jpg', 'maskds5.jpg')
-    #v.save('inpaint.jpg')
-    #glatting('GreyCat.png')
-    #s = kontrast('ColorCat.png')
-   # s.save('CatContrast.jpg')
-    #plt.imshow(s)
-   # plt.show()
-   print(np.mod(2, 2))
-   print(np.mod(1, 2))
+    glatting('GreyCat.png')
+
+    inp = inpaint('ferdig.jpg', 'maskds5.jpg')
+    inp.save('inpaintgjov.jpg')
+
+    kon = kontrast('ColorCat.png')
+    kon.save('CatContrast.jpg')
+
+    kl = klone('ds3.jpg', 'maskds4.jpg', 'gjov.jpg')
+    kl.save('kloneferdig.jpg')
+
