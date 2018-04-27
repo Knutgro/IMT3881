@@ -1,3 +1,18 @@
+"""
+Prosjekt oppgave i Vitenskapelig programmering
+Knut Grøstad
+Implementert:
+glatting av gråtonebilder
+inpainting av fargebilder
+kontrastforsterkning av gråtonebilder
+Sømløs kloning av fargebilder
+
+Aksepterer kun bilder med 3 kanaler.
+
+"""
+
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import sparse
