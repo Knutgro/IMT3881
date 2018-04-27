@@ -189,7 +189,7 @@ def losning(u0, a, b, indx_til_koord, koord_til_indx, retning, u1=None):
     Løser poissons ligning
     :param u0: (np.array) "bakgrunnsbildet"
     :param a:  (sparse array) laplace innenfor omega_i og på grensen
-    :param b:  (np.array) verdiene innenfor omega_i
+    :param b:  (np.array) nye gradienter
     :param indx_til_koord: (list) inneholder indeksene til koordinatene som er
             innenfor omega_i
     :param koord_til_indx: (np.array) inneholder koordinatene til indeksene som er
